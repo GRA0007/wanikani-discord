@@ -1,0 +1,162 @@
+@font-face {
+  font-family: 'Open Sans';
+  src: url('OpenSans-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: 'Open Sans';
+  src: url('OpenSans-Bold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+}
+
+:root {
+  --bg: #FFF;
+  --wk: #1C46F5;
+  --white: #FFF;
+  --txt: #000;
+  --gray: #888;
+  --lessons: #FF00AA;
+  --reviews: #00AAFF;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #2F3136;
+    --wk: #6B95FF;
+    --txt: #FFF;
+    --lessons: #B30077;
+    --reviews: #0081C2;
+  }
+}
+
+html, body {
+  width: 450px;
+  background: var(--bg);
+  color: var(--txt);
+  font-family: 'Open Sans', sans-serif;
+}
+
+.stats {
+  display: flex;
+  padding: .5em .5em 0;
+  justify-content: space-between;
+  align-items: center;
+}
+.stats .level {
+  background: var(--wk);
+  color: var(--bg);
+  padding: .2em .5em;
+  border-radius: .3em;
+  font-size: .9em;
+  font-weight: bold;
+}
+.stats .time {
+  font-size: .7em;
+  flex: 1;
+  padding-left: .4rem;
+}
+.stats .timeServed {
+  font-size: .9em;
+}
+
+.status {
+  display: flex;
+  gap: .5em;
+  padding: .5em;
+}
+.status span {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  font-weight: bold;
+  font-size: 1.8em;
+  padding: .4rem 0 .7rem;
+  color: var(--white);
+  background: var(--gray);
+  border-radius: .3rem;
+  box-shadow: inset 0 -.2rem 0 0 rgba(0,0,0,.2);
+}
+.status span::after {
+  display: block;
+  font-weight: 400;
+  font-size: .8rem;
+}
+.status span:empty::before { content: '0'; }
+.status .lessons:not(:empty) { background: var(--lessons); }
+.status .reviews:not(:empty) { background: var(--reviews); }
+.status .lessons::after { content: 'lessons completed'; }
+.status .reviews::after { content: 'reviews completed'; }
+
+.progress {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 .5rem .5rem;
+  gap: .5rem;
+}
+.progress .flame {
+  background: var(--wk);
+  border-radius: .5em 2em 2em;
+  height: 1.5em;
+  width: 1.5em;
+  transform: rotate(48deg);
+  position: relative;
+}
+.progress .flame.dead {
+  background: var(--gray);
+}
+.progress .flame::before {
+  content: '';
+  border-radius: inherit;
+  height: inherit;
+  width: inherit;
+  background: inherit;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: rotate(-40deg);
+}
+.progress .flame::after {
+  content: '';
+  border-radius: inherit;
+  height: .6em;
+  width: .6em;
+  background: rgba(255,255,255,.4);
+  position: absolute;
+  top: calc(50% - .3em);
+  left: calc(50% - .3em);
+  transform: rotate(-3deg);
+}
+.progress .streak {
+  font-size: 1.5em;
+  color: var(--wk);
+  font-weight: bold;
+  flex: 1;
+  line-height: 1em;
+}
+.progress .streak:empty {
+  color: var(--gray);
+}
+.progress .streak:empty::before {
+  content: '0';
+}
+.progress.hidden .flame,
+.progress.hidden .streak {
+  display: none;
+}
+
+.progress span {
+  display: block;
+  padding: .2rem .5rem;
+  border: 2px solid var(--gray);
+  border-radius: .3rem;
+  font-size: .9em;
+}
+.progress span:empty::before { content: '0'; }
+.progress .lessons:not(:empty) { border-color: var(--lessons); }
+.progress .reviews:not(:empty) { border-color: var(--reviews); }
+.progress .lessons::after { content: ' lessons'; }
+.progress .reviews::after { content: ' reviews'; }

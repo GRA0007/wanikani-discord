@@ -1,0 +1,22 @@
+{
+  "name": "wanikani-discord",
+  "version": "0.0.1",
+  "description": "Track Wanikani progress and maintain your streak",
+  "main": "index.js",
+  "author": "Benji Grant",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.9.0"
+  },
+  "dependencies": {
+    "@discordjs/builders": "^0.12.0",
+    "@discordjs/rest": "^0.3.0",
+    "@keyv/sqlite": "^3.0.0",
+    "cron": "^1.8.2",
+    "dayjs": "^1.10.7",
+    "discord-api-types": "^0.26.1",
+    "discord.js": "^13.6.0",
+    "keyv": "^4.1.0",
+    "puppeteer": "^13.1.3"
+  }
+}
