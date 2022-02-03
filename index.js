@@ -27,11 +27,14 @@ const fetchWK = async (resource, key, params) => {
   if (params) {
     url.search = new URLSearchParams(params).toString()
   }
+
   const res = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${key}`,
     },
   })
+  
+  if (res.status !== 200) throw res
   return await res.json()
 }
 
@@ -98,34 +101,38 @@ const sendCards = async () => {
     if (userData.hour !== dayjs().utc().hour()) return
 
     // Fetch data from the API
-    const wkUser = await fetchWK('user', userData.key)
-    if (wkUser.data.current_vacation_started_at !== null) return await db.set(userid, { ...userData, streak: 0 })
-    const wkSummary = await fetchWK('summary', userData.key)
-    const wkLevels = await fetchWK('level_progressions', userData.key)
-    const wkAssignments = await fetchWK('assignments', userData.key, { updated_after: last_date.toISOString() })
-    const wkReviews = await fetchWK('reviews', userData.key, { updated_after: last_date.toISOString() })
-    const completedLessons = wkAssignments.data.filter(a => dayjs(a.data.started_at).isAfter(last_date)).length
+    try {
+      const wkUser = await fetchWK('user', userData.key)
+      if (wkUser.data.current_vacation_started_at !== null) return await db.set(userid, { ...userData, streak: 0 })
+      const wkSummary = await fetchWK('summary', userData.key)
+      const wkLevels = await fetchWK('level_progressions', userData.key)
+      const wkAssignments = await fetchWK('assignments', userData.key, { updated_after: last_date.toISOString() })
+      const wkReviews = await fetchWK('reviews', userData.key, { updated_after: last_date.toISOString() })
+      const completedLessons = wkAssignments.data.filter(a => dayjs(a.data.started_at).isAfter(last_date)).length
 
-    // Update streak
-    let streak = userData.streak
-    if (completedLessons > 0 || wkReviews.total_count > 0) {
-      streak++
-    } else {
-      streak = 0
+      // Update streak
+      let streak = userData.streak
+      if (completedLessons > 0 || wkReviews.total_count > 0) {
+        streak++
+      } else {
+        streak = 0
+      }
+      await db.set(userid, { ...userData, streak })
+
+      await sendUserCard(userid, userData.channel, body, {
+        level: wkUser.data.level,
+        levelTime: dayjs().diff(dayjs(wkLevels.data.at(-1).data.unlocked_at), 'days'),
+        totalTime: dayjs().diff(dayjs(wkUser.data.started_at), 'days'),
+        completedLessons,
+        completedReviews: wkReviews.total_count,
+        showStreak: userData.showStreak,
+        streak,
+        upcomingLessons: wkSummary.data.lessons[0].subject_ids.length,
+        upcomingReviews: wkSummary.data.reviews[0].subject_ids.length,
+      })
+    } catch (e) {
+      console.error(new Date().toLocaleString(), 'WaniKani API error', e)
     }
-    await db.set(userid, { ...userData, streak })
-
-    await sendUserCard(userid, userData.channel, body, {
-      level: wkUser.data.level,
-      levelTime: dayjs().diff(dayjs(wkLevels.data.at(-1).data.unlocked_at), 'days'),
-      totalTime: dayjs().diff(dayjs(wkUser.data.started_at), 'days'),
-      completedLessons,
-      completedReviews: wkReviews.total_count,
-      showStreak: userData.showStreak,
-      streak,
-      upcomingLessons: wkSummary.data.lessons[0].subject_ids.length,
-      upcomingReviews: wkSummary.data.reviews[0].subject_ids.length,
-    })
   }))
 
   // Close the browser
@@ -144,18 +151,34 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.commandName === 'register') {
     const key = interaction.options.getString('api_token', true)
-    const userData = await db.get(interaction.user.id) ?? { showStreak: true, streak: 0, hour: 0 } // defaults
-    await db.set(interaction.user.id, {
-      ...userData,
-      key,
-      channel: interaction.channelId,
-    })
-    const users = await db.get('users') ?? []
-    await db.set('users', [...users.filter(u => u !== interaction.user.id), interaction.user.id])
-    interaction.reply({
-      content: 'Your API token has been saved. You will receive updates in this channel every day. Use `/unregister` to cancel your updates.',
-      ephemeral: true,
-    })
+    await interaction.deferReply({ ephemeral: true })
+    try {
+      const wkUser = await fetchWK('user', key)
+      const userData = await db.get(interaction.user.id) ?? { showStreak: true, streak: 0, hour: 0 } // defaults
+      await db.set(interaction.user.id, {
+        ...userData,
+        key,
+        channel: interaction.channelId,
+      })
+      const users = await db.get('users') ?? []
+      await db.set('users', [...users.filter(u => u !== interaction.user.id), interaction.user.id])
+      interaction.editReply({
+        content: `✅\nYour API token for the WaniKani account [${wkUser.data.username}](<${wkUser.data.profile_url}>) has been saved. Updates will be sent in this channel every day at <t:${dayjs().add(1, 'day').utc().hour(0).minute(0).unix()}:t>.\nUse \`/time\` to change when your updates are sent. Use \`/unregister\` to cancel your updates.`,
+        ephemeral: true,
+      })
+    } catch (e) {
+      if (e.status === 401) {
+        interaction.editReply({
+          content: `The API token you entered isn't valid. Please make sure you copied it without any extra characters or spaces.`,
+          ephemeral: true,
+        })
+      } else {
+        interaction.editReply({
+          content: `The WaniKani API is currently not responding, please try again later.`,
+          ephemeral: true,
+        })
+      }
+    }
   } else if (interaction.commandName === 'unregister') {
     const user = interaction.options.getMember('user') || interaction.member
     if (user.id !== interaction.user.id && !interaction.memberPermissions.has('MANAGE_MESSAGES')) {
@@ -164,6 +187,13 @@ client.on('interactionCreate', async interaction => {
         ephemeral: true,
       })
     } else {
+      const userData = await db.get(interaction.user.id)
+      if (userData.channel !== interaction.channelId) {
+        return interaction.reply({
+          content: 'This user is not registered in this channel. Run this command from the channel that the user registered in.',
+          ephemeral: true,
+        })
+      }
       const users = await db.get('users')
       await db.set('users', users.filter(u => u !== user.id))
       interaction.reply({
@@ -215,7 +245,7 @@ client.on('interactionCreate', async interaction => {
       const userData = await db.get(interaction.user.id)
       await db.set(interaction.user.id, { ...userData, hour })
       interaction.reply({
-        content: `You will now receive your daily updates at ${hour}:00 (GMT).`,
+        content: `You will now receive your daily updates at <t:${dayjs().add(1, 'day').utc().hour(hour).minute(0).unix()}:t>.`,
         ephemeral: true,
       })
     }
@@ -231,7 +261,7 @@ client.on('interactionCreate', async interaction => {
         ephemeral: true,
       })
     } else {
-      await interaction.deferReply()
+      await interaction.deferReply({ ephemeral: true })
       const channels = await interaction.guild.channels.fetch()
       const channelIds = channels.map(c => c.id)
       const users = await db.get('users')
@@ -243,7 +273,7 @@ client.on('interactionCreate', async interaction => {
         }
       }))
       await db.set('users', users.filter(u => !cancelled.includes(u)))
-      interaction.reply(`All updates have been disabled in this server. (${cancelled.length} user${cancelled.length === 1 ? '' : 's'})`)
+      interaction.editReply(`All updates have been disabled in this server. (${cancelled.length} user${cancelled.length === 1 ? '' : 's'})`)
     }
   }
 })
