@@ -38,5 +38,5 @@ Remove all registrations in a server. Can only be used if you have the _manage m
 1. Clone this repo
 2. Run `yarn` to install dependencies
 3. Create `config.json` and fill out details (use `config.example.json` as a template)
-4. Optionally, run `yarn deploy-commands` to deploy Discord slash commands
+4. Optionally, run `yarn deploy-commands [guild_id]` to deploy Discord slash commands (omit the guild id to deploy globally)
 5. Run `yarn start` to start the bot

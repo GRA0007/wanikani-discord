@@ -114,7 +114,7 @@ const sendCards = async () => {
       let streak = userData.streak
       if (completedLessons > 0 || wkReviews.total_count > 0) {
         streak++
-      } else {
+      } else if (wkSummary.data.reviews[0].subject_ids.length !== 0) {
         streak = 0
       }
       await db.set(userid, { ...userData, streak })

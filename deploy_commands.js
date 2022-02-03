@@ -60,6 +60,14 @@ const commands = [
 
 const rest = new REST({ version: '9' }).setToken(token)
 
-rest.put(Routes.applicationGuildCommands(client_id, '332158176650854401'), { body: commands })
-	.then(() => console.log('Successfully registered application commands'))
-	.catch(console.error)
+if (process.argv[2]) {
+  console.log('Deploying commands to the guild specified')
+  rest.put(Routes.applicationGuildCommands(client_id, process.argv[2]), { body: commands })
+    .then(() => console.log('Success'))
+    .catch(console.error)
+} else {
+  console.log('Deploying commands globally')
+  rest.put(Routes.applicationCommands(client_id), { body: commands })
+    .then(() => console.log('Success, please wait 1 hour for commands to roll out'))
+    .catch(console.error)
+}
