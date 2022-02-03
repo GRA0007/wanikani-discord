@@ -7,6 +7,13 @@ const dayjs = require('Dayjs')
 const { URL, URLSearchParams } = require('url')
 const { token, hour } = require('./config.json')
 
+// User data
+/*{
+  key: 'WK_API_TOKEN',
+  channel: 'CHANNEL_ID',
+  showStreak: true,
+  streak: 0,
+}*/
 
 const db = new Keyv('sqlite://db.sqlite')
 
@@ -86,7 +93,7 @@ const sendCards = async () => {
 
     // Fetch data from the API
     const wkUser = await fetchWK('user', userData.key)
-    if (wkUser.data.current_vacation_started_at !== null) return
+    if (wkUser.data.current_vacation_started_at !== null) return await db.set(userid, { ...userData, streak: 0 })
     const wkSummary = await fetchWK('summary', userData.key)
     const wkLevels = await fetchWK('level_progressions', userData.key)
     const wkAssignments = await fetchWK('assignments', userData.key, { updated_after: last_date.toISOString() })
@@ -124,6 +131,99 @@ client.once('ready', async () => {
 
   // Run every day
   new CronJob(`0 0 ${hour} * * *`, sendCards, null, true)
+})
+
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isCommand()) return
+
+  if (interaction.commandName === 'register') {
+    const key = interaction.options.getString('api_token', true)
+    const userData = await db.get(interaction.user.id) ?? { showStreak: true, streak: 0 } // defaults
+    await db.set(interaction.user.id, {
+      ...userData,
+      key,
+      channel: interaction.channelId,
+    })
+    const users = await db.get('users') ?? []
+    await db.set('users', [...users.filter(u => u !== interaction.user.id), interaction.user.id])
+    interaction.reply({
+      content: 'Your API token has been saved. You will receive updates in this channel every day. Use `/unregister` to cancel your updates.',
+      ephemeral: true,
+    })
+  } else if (interaction.commandName === 'unregister') {
+    const user = interaction.options.getMember('user') || interaction.member
+    if (user.id !== interaction.user.id && !interaction.memberPermissions.has('MANAGE_MESSAGES')) {
+      interaction.reply({
+        content: 'You need the _manage messages_ permission to unregister another user.',
+        ephemeral: true,
+      })
+    } else {
+      const users = await db.get('users')
+      await db.set('users', users.filter(u => u !== user.id))
+      interaction.reply({
+        content: `Updates for ${user.displayName} have been cancelled.`,
+        ephemeral: true,
+      })
+    }
+  } else if (interaction.commandName === 'streak') {
+    const showStreak = interaction.options.getBoolean('enabled', true)
+    const users = await db.get('users')
+    if (!users.includes(interaction.user.id)) {
+      interaction.reply({
+        content: 'You are not registered for updates. You can do so with `/register [api_token]`.',
+        ephemeral: true,
+      })
+    } else {
+      const userData = await db.get(interaction.user.id)
+      await db.set(interaction.user.id, { ...userData, showStreak })
+      interaction.reply({
+        content: `Your streak has been ${showStreak ? 'enabled' : 'disabled'}.`,
+        ephemeral: true,
+      })
+    }
+  } else if (interaction.commandName === 'setstreak') {
+    const streak = interaction.options.getInteger('value', true)
+    const users = await db.get('users')
+    if (!users.includes(interaction.user.id)) {
+      interaction.reply({
+        content: 'You are not registered for updates. You can do so with `/register [api_token]`.',
+        ephemeral: true,
+      })
+    } else {
+      const userData = await db.get(interaction.user.id)
+      await db.set(interaction.user.id, { ...userData, streak })
+      interaction.reply({
+        content: `Your streak has been manually set to ${streak}.`,
+        ephemeral: true,
+      })
+    }
+  } else if (interaction.commandName === 'unregisterall') {
+    if (!interaction.inGuild()) {
+      interaction.reply({
+        content: 'This command doesn\'t work in a direct message.',
+        ephemeral: true,
+      })
+    } else if (!interaction.memberPermissions.has('MANAGE_MESSAGES')) {
+      interaction.reply({
+        content: 'You need the _manage messages_ permission to unregister another user.',
+        ephemeral: true,
+      })
+    } else {
+      await interaction.deferReply()
+      const channels = await interaction.guild.channels.fetch()
+      const channelIds = channels.map(c => c.id)
+      const users = await db.get('users')
+      let cancelled = []
+      await Promise.allSettled(users.map(async userid => {
+        const userData = await db.get(userid)
+        if (channelIds.includes(userData.channel)) {
+          cancelled = [...cancelled, userid]
+        }
+      }))
+      await db.set('users', users.filter(u => !cancelled.includes(u)))
+      interaction.reply(`All updates have been disabled in this server. (${cancelled.length} user${cancelled.length === 1 ? '' : 's'})`)
+    }
+  }
 })
 
 client.login(token).catch(() => {
