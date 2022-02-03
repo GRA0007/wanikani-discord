@@ -17,6 +17,7 @@
     "discord-api-types": "^0.26.1",
     "discord.js": "^13.6.0",
     "keyv": "^4.1.0",
+    "node-fetch": "2.0",
     "puppeteer": "^13.1.3"
   }
 }
