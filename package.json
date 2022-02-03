@@ -1,10 +1,14 @@
 {
   "name": "wanikani-discord",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Track Wanikani progress and maintain your streak",
   "main": "index.js",
   "author": "Benji Grant",
   "license": "MIT",
+  "scripts": {
+    "start": "node index.js",
+    "deploy-commands": "node deploy_commands.js"
+  },
   "engines": {
     "node": ">=16.9.0"
   },

@@ -42,6 +42,17 @@ const commands = [
     ),
   
   new SlashCommandBuilder()
+    .setName('time')
+    .setDescription('Choose when to send your daily update')
+    .addIntegerOption(option => option
+      .setName('hour')
+      .setDescription('Hour to send update (GMT)')
+      .setRequired(true)
+      .setMinValue(0)
+      .setMaxValue(23)
+    ),
+  
+  new SlashCommandBuilder()
     .setName('unregisterall')
     .setDescription('Cancel all updates in this server (admin only)'),
     

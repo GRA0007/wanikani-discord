@@ -3,9 +3,11 @@ const { Client, Intents, MessageAttachment } = require('discord.js')
 const Keyv = require('keyv')
 const CronJob = require('cron').CronJob
 const fetch = require('node-fetch')
-const dayjs = require('Dayjs')
+const dayjs = require('dayjs')
+const utc = require('dayjs/plugin/utc')
+dayjs.extend(utc)
 const { URL, URLSearchParams } = require('url')
-const { token, hour } = require('./config.json')
+const { token } = require('./config.json')
 
 // User data
 /*{
@@ -13,6 +15,7 @@ const { token, hour } = require('./config.json')
   channel: 'CHANNEL_ID',
   showStreak: true,
   streak: 0,
+  hour: 0,
 }*/
 
 const db = new Keyv('sqlite://db.sqlite')
@@ -89,7 +92,10 @@ const sendCards = async () => {
   const users = await db.get('users') ?? []
   await Promise.allSettled(users.map(async userid => {
     const userData = await db.get(userid)
-    if (!userData) return console.error(new Date().toLocaleString(), 'user data missing', userid)
+    if (!userData) return console.error(new Date().toLocaleString(), 'User data missing:', userid)
+
+    // Only process users on the right hour
+    if (userData.hour !== dayjs().utc().hour()) return
 
     // Fetch data from the API
     const wkUser = await fetchWK('user', userData.key)
@@ -129,8 +135,8 @@ const sendCards = async () => {
 client.once('ready', async () => {
 	console.log(new Date().toLocaleString(), `Logged in as ${client.user.tag}`)
 
-  // Run every day
-  new CronJob(`0 0 ${hour} * * *`, sendCards, null, true)
+  // Run every hour
+  new CronJob(`0 0 * * * *`, sendCards, null, true)
 })
 
 client.on('interactionCreate', async interaction => {
@@ -138,7 +144,7 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.commandName === 'register') {
     const key = interaction.options.getString('api_token', true)
-    const userData = await db.get(interaction.user.id) ?? { showStreak: true, streak: 0 } // defaults
+    const userData = await db.get(interaction.user.id) ?? { showStreak: true, streak: 0, hour: 0 } // defaults
     await db.set(interaction.user.id, {
       ...userData,
       key,
@@ -194,6 +200,22 @@ client.on('interactionCreate', async interaction => {
       await db.set(interaction.user.id, { ...userData, streak })
       interaction.reply({
         content: `Your streak has been manually set to ${streak}.`,
+        ephemeral: true,
+      })
+    }
+  } else if (interaction.commandName === 'time') {
+    const hour = interaction.options.getInteger('hour', true)
+    const users = await db.get('users')
+    if (!users.includes(interaction.user.id)) {
+      interaction.reply({
+        content: 'You are not registered for updates. You can do so with `/register [api_token]`.',
+        ephemeral: true,
+      })
+    } else {
+      const userData = await db.get(interaction.user.id)
+      await db.set(interaction.user.id, { ...userData, hour })
+      interaction.reply({
+        content: `You will now receive your daily updates at ${hour}:00 (GMT).`,
         ephemeral: true,
       })
     }

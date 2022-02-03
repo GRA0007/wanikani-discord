@@ -1,5 +1,4 @@
 {
   "token": "BOT_TOKEN",
-  "client_id": "BOT_CLIENT_ID",
-  "hour": 0
+  "client_id": "BOT_CLIENT_ID"
 }
