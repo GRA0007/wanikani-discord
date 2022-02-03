@@ -4,6 +4,8 @@ Get daily updates in your Discord server with your WaniKani progress! This bot a
 
 **[Add to your server](https://discord.com/api/oauth2/authorize?client_id=938595177424105534&permissions=277025705024&scope=bot%20applications.commands)**
 
+<img src="example.png" alt="Example card" width=400>
+
 ## Commands
 
 **`/register [api_token]`**
