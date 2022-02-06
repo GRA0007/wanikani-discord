@@ -20,14 +20,12 @@
   --lessons: #FF00AA;
   --reviews: #00AAFF;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #2F3136;
-    --wk: #6B95FF;
-    --txt: #FFF;
-    --lessons: #B30077;
-    --reviews: #0081C2;
-  }
+.dark {
+  --bg: #2F3136;
+  --wk: #6B95FF;
+  --txt: #FFF;
+  --lessons: #B30077;
+  --reviews: #0081C2;
 }
 
 html, body {

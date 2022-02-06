@@ -8,15 +8,15 @@ Get daily updates in your Discord server with your WaniKani progress! This bot a
 
 ## Commands
 
-**`/register [api_token]`**
+**`/register <api_token>`**
 
-Register a new user to receive daily updates in the current channel. Requires a WaniKani v2 API token.
+Register a new user to receive daily updates in the current channel. Requires a WaniKani v2 API token. The token can be omitted if you are already registered in another channel.
 
-**`/unregister [@user]`**
+**`/unregister <@user>`**
 
 Unregister yourself (or another user) from updates. If unregistering another user, you must have the _manage messages_ permission.
 
-**`/streak [enabled]`**
+**`/streak [enabled/disabled]`**
 
 Enable or disable showing a streak on your daily card.
 
@@ -26,11 +26,17 @@ Manually set your streak to a number. Useful if you have already been using Wani
 
 **`/time [hour]`**
 
-Set the hour of each day when your update will be sent. Use GMT time (0 to 23).
+Set the hour of each day when all updates in the current channel will be sent. Use GMT time (0 to 23).
+
+**`/theme [light/dark]`**
+
+Set the theme to use in the current channel. Will affect all updates in this channel.
 
 **`/unregisterall`**
 
-Remove all registrations in a server. Can only be used if you have the _manage messages_ permission.
+If run from a server, removes all registrations in that server. Can only be used if you have the _manage messages_ permission.
+
+If run from a DM, removes all registrations in all servers for the current user.
 
 ---
 

@@ -10,12 +10,12 @@ const commands = [
     .addStringOption(option => option
       .setName('api_token')
       .setDescription('Your WaniKani API token (from your settings)')
-      .setRequired(true)
+      .setRequired(false)
     ),
 
   new SlashCommandBuilder()
     .setName('unregister')
-    .setDescription('Stop receiving updates for this user')
+    .setDescription('Stop receiving updates for this user in this channel')
     .addUserOption(option => option
       .setName('user')
       .setDescription('Optionally specify user (admin only)')
@@ -43,7 +43,7 @@ const commands = [
   
   new SlashCommandBuilder()
     .setName('time')
-    .setDescription('Choose when to send your daily update')
+    .setDescription('Choose when to send the daily updates in this channel')
     .addIntegerOption(option => option
       .setName('hour')
       .setDescription('Hour to send update (GMT)')
@@ -51,10 +51,37 @@ const commands = [
       .setMinValue(0)
       .setMaxValue(23)
     ),
+
+  new SlashCommandBuilder()
+    .setName('theme')
+    .setDescription('Set the theme to use in this channel')
+    .addStringOption(option => option
+      .setName('set')
+      .setDescription('Light or dark')
+      .setRequired(true)
+      .addChoice('light', 'light')
+      .addChoice('dark', 'dark')
+    ),
   
   new SlashCommandBuilder()
     .setName('unregisterall')
-    .setDescription('Cancel all updates in this server (admin only)'),
+    .setDescription('Cancel all updates in this channel (admin only), or unregister you from all servers (from DM)'),
+
+  new SlashCommandBuilder()
+    .setName('help')
+    .setDescription('Read help text about this bot or a specific command')
+    .addStringOption(option => option
+      .setName('command')
+      .setDescription('Info about a specific command')
+      .setRequired(false)
+      .addChoice('register', 'register')
+      .addChoice('unregister', 'unregister')
+      .addChoice('streak', 'streak')
+      .addChoice('setstreak', 'setstreak')
+      .addChoice('time', 'time')
+      .addChoice('theme', 'theme')
+      .addChoice('unregisterall', 'unregisterall')
+    ),
     
 ].map(cmd => cmd.toJSON())
 

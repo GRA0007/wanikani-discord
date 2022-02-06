@@ -12,16 +12,35 @@ const { token } = require('./config.json')
 // User data
 /*{
   key: 'WK_API_TOKEN',
-  channel: 'CHANNEL_ID',
   showStreak: true,
   streak: 0,
+}*/
+
+// Channel data
+/*{
+  theme: 'light',
+  users: [id, id, ...],
   hour: 0,
 }*/
 
-const db = new Keyv('sqlite://db.sqlite')
+const helpText = {
+  default: 'Get daily updates in your Discord server with your WaniKani progress! This bot also tracks your streak (days with at least 1 lesson or review).\n\n[Add to your server](<https://discord.com/api/oauth2/authorize?client_id=938595177424105534&permissions=277025705024&scope=bot%20applications.commands>)',
+  register: 'Register a new user to receive daily updates in the current channel. Requires a WaniKani v2 API token. The token can be omitted if you are already registered in another channel.',
+  unregister: 'Unregister yourself (or another user) from updates. If unregistering another user, you must have the _manage messages_ permission.',
+  streak: 'Enable or disable showing a streak on your daily card.',
+  setstreak: 'Manually set your streak to a number. Useful if you have already been using WaniKani for a while, or if you want to reset it to 0.',
+  time: 'Set the hour of each day when all updates in the current channel will be sent. Use GMT time (0 to 23).',
+  theme: 'Set the theme to use in the current channel. Will affect all updates in this channel.',
+  unregisterall: 'If run from a server, removes all registrations in that server. Can only be used if you have the _manage messages_ permission.\n\nIf run from a DM, removes all registrations in all servers for the current user.',
+}
+
+// Database
+const users = new Keyv('sqlite://db.sqlite', { namespace: 'users' })
+const channels = new Keyv('sqlite://db.sqlite', { namespace: 'channels' })
 
 const client = new Client({ intents: [Intents.FLAGS.GUILDS] })
 
+// Fetch data from the WaniKani API
 const fetchWK = async (resource, key, params) => {
   const url = new URL(`https://api.wanikani.com/v2/${resource}`)
   if (params) {
@@ -38,19 +57,27 @@ const fetchWK = async (resource, key, params) => {
   return await res.json()
 }
 
+// Render a card
 const renderCard = async (page, data) => {
   await page.evaluate((_, data) => {
+    // Theme
+    document.body.classList.toggle('dark', data.theme === 'dark')
+
+    // Level and time served
     document.querySelector('.stats .level').innerHTML = `Level ${data.level}`
     document.querySelector('.stats .time').innerHTML = `for ${data.levelTime} days`
     document.querySelector('.stats .timeServed').innerHTML = `${data.totalTime} days served`
 
+    // Completed lessons and reviews
     document.querySelector('.status .lessons').innerHTML = data.completedLessons || ''
     document.querySelector('.status .reviews').innerHTML = data.completedReviews || ''
 
+    // Streak
     document.querySelector('.progress').classList.toggle('hidden', !data.showStreak)
     document.querySelector('.progress .flame').classList.toggle('dead', data.streak === 0)
     document.querySelector('.progress .streak').innerHTML = data.streak || ''
 
+    // Upcoming lessons and reviews
     document.querySelector('.progress .lessons').innerHTML = data.upcomingLessons || ''
     document.querySelector('.progress .reviews').innerHTML = data.upcomingReviews || ''
   }, data)
@@ -58,6 +85,7 @@ const renderCard = async (page, data) => {
   return await page.screenshot()
 }
 
+// Compose the embed and send the user card
 const sendUserCard = async (userid, channelid, body, data) => {
   const cardFile = new MessageAttachment(await renderCard(body, data), 'card.png', {
     description: `Level ${data.level}, ${data.streak} day streak`
@@ -82,57 +110,64 @@ const sendUserCard = async (userid, channelid, body, data) => {
 
 // Send all the registered cards
 const sendCards = async () => {
+  // Find all users that are ready to send
+  const currentHour = dayjs().utc().hour()
+  const allChannels = await channels.get('channels') ?? []
+  const selectedChannels = allChannels.filter(c => c.hour === currentHour && c.users.length > 0)
+
+  if (selectedChannels.length === 0) return // No channels registered for this hour
+
   // Start the browser
-  console.log(new Date().toLocaleString(), 'Sending out cards')
+  console.log(new Date().toLocaleString(), `Sending out cards to ${selectedChannels.length} channels`)
   const browser = await puppeteer.launch({'args': ['--no-sandbox', '--disable-setuid-sandbox']})
   page = await browser.newPage()
   await page.setViewport({ width: 450, height: 300, deviceScaleFactor: 2 })
   await page.goto(`file:///${__dirname}/card/index.html`)
   const body = await page.$('body')
 
-  // Loop through users
+  // Loop through channels
   const last_date = dayjs().subtract(1, 'day')
-  const users = await db.get('users') ?? []
-  await Promise.allSettled(users.map(async userid => {
-    const userData = await db.get(userid)
-    if (!userData) return console.error(new Date().toLocaleString(), 'User data missing:', userid)
+  await Promise.allSettled(selectedChannels.map(async channel => {
+    // Loop through users in channel
+    await Promise.allSettled(channel.users.map(async userid => {
+      const userData = await users.get(userid)
+      if (!userData) return console.error(new Date().toLocaleString(), 'User data missing:', userid)
 
-    // Only process users on the right hour
-    if (userData.hour !== dayjs().utc().hour()) return
+      // Fetch data from the API
+      try {
+        const wkUser = await fetchWK('user', userData.key)
+        if (wkUser.data.current_vacation_started_at !== null) return await users.set(userid, { ...userData, streak: 0 })
+        const wkSummary = await fetchWK('summary', userData.key)
+        const wkLevels = await fetchWK('level_progressions', userData.key)
+        const wkAssignments = await fetchWK('assignments', userData.key, { updated_after: last_date.toISOString() })
+        const wkReviews = await fetchWK('reviews', userData.key, { updated_after: last_date.toISOString() })
+        const completedLessons = wkAssignments.data.filter(a => dayjs(a.data.started_at).isAfter(last_date)).length
 
-    // Fetch data from the API
-    try {
-      const wkUser = await fetchWK('user', userData.key)
-      if (wkUser.data.current_vacation_started_at !== null) return await db.set(userid, { ...userData, streak: 0 })
-      const wkSummary = await fetchWK('summary', userData.key)
-      const wkLevels = await fetchWK('level_progressions', userData.key)
-      const wkAssignments = await fetchWK('assignments', userData.key, { updated_after: last_date.toISOString() })
-      const wkReviews = await fetchWK('reviews', userData.key, { updated_after: last_date.toISOString() })
-      const completedLessons = wkAssignments.data.filter(a => dayjs(a.data.started_at).isAfter(last_date)).length
+        // Update streak
+        let streak = userData.streak
+        if (completedLessons > 0 || wkReviews.total_count > 0) {
+          streak++
+        } else if (wkSummary.data.reviews[0].subject_ids.length !== 0) {
+          streak = 0
+        }
+        await users.set(userid, { ...userData, streak })
 
-      // Update streak
-      let streak = userData.streak
-      if (completedLessons > 0 || wkReviews.total_count > 0) {
-        streak++
-      } else if (wkSummary.data.reviews[0].subject_ids.length !== 0) {
-        streak = 0
+        await sendUserCard(userid, userData.channel, body, {
+          theme: channel.theme,
+          level: wkUser.data.level,
+          levelTime: dayjs().diff(dayjs(wkLevels.data.at(-1).data.unlocked_at), 'days'),
+          totalTime: dayjs().diff(dayjs(wkUser.data.started_at), 'days'),
+          completedLessons,
+          completedReviews: wkReviews.total_count,
+          showStreak: userData.showStreak,
+          streak,
+          upcomingLessons: wkSummary.data.lessons[0].subject_ids.length,
+          upcomingReviews: wkSummary.data.reviews[0].subject_ids.length,
+        })
+      } catch (e) {
+        console.error(new Date().toLocaleString(), 'WaniKani API error', e)
       }
-      await db.set(userid, { ...userData, streak })
-
-      await sendUserCard(userid, userData.channel, body, {
-        level: wkUser.data.level,
-        levelTime: dayjs().diff(dayjs(wkLevels.data.at(-1).data.unlocked_at), 'days'),
-        totalTime: dayjs().diff(dayjs(wkUser.data.started_at), 'days'),
-        completedLessons,
-        completedReviews: wkReviews.total_count,
-        showStreak: userData.showStreak,
-        streak,
-        upcomingLessons: wkSummary.data.lessons[0].subject_ids.length,
-        upcomingReviews: wkSummary.data.reviews[0].subject_ids.length,
-      })
-    } catch (e) {
-      console.error(new Date().toLocaleString(), 'WaniKani API error', e)
-    }
+    }))
   }))
 
   // Close the browser
@@ -150,32 +185,37 @@ client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand()) return
 
   if (interaction.commandName === 'register') {
-    const key = interaction.options.getString('api_token', true)
-    await interaction.deferReply({ ephemeral: true })
+    const key = interaction.options.getString('api_token')
+    await interaction.deferReply({ ephemeral: interaction.inGuild() })
     try {
-      const wkUser = await fetchWK('user', key)
-      const userData = await db.get(interaction.user.id) ?? { showStreak: true, streak: 0, hour: 0 } // defaults
-      await db.set(interaction.user.id, {
-        ...userData,
-        key,
-        channel: interaction.channelId,
-      })
-      const users = await db.get('users') ?? []
-      await db.set('users', [...users.filter(u => u !== interaction.user.id), interaction.user.id])
+      const userData = await users.get(interaction.user.id) ?? { showStreak: true, streak: 0 } // defaults
+      const wkUser = await fetchWK('user', (key ?? userData.key) ?? 'invalid')
+      if (key) {
+        await users.set(interaction.user.id, { ...userData, key })
+      } else if (!userData.key) {
+        return interaction.editReply({
+          content: 'Your account is not linked with a WaniKani API token yet. Please run `/register [api_token]` with your WaniKani V2 API token.',
+          ephemeral: interaction.inGuild(),
+        })
+      }
+      const channel = await channels.get(interaction.channelId) ?? { theme: 'light', hour: 0, users: [] } // defaults
+      await channels.set(interaction.channelId, { ...channel, users: [...channel.users.filter(u => u !== interaction.user.id), interaction.user.id] })
+      const channelList = await channels.get('channels')
+      await channels.set('channels', [...channelList.filter(c => c !== interaction.channelId), interaction.channelId])
       interaction.editReply({
-        content: `✅\nYour API token for the WaniKani account [${wkUser.data.username}](<${wkUser.data.profile_url}>) has been saved. Updates will be sent in this channel every day at <t:${dayjs().add(1, 'day').utc().hour(0).minute(0).unix()}:t>.\nUse \`/time\` to change when your updates are sent. Use \`/unregister\` to cancel your updates.`,
-        ephemeral: true,
+        content: `✅ Your API token for the WaniKani account [${wkUser.data.username}](<${wkUser.data.profile_url}>) has been saved. Updates will be sent in this channel every day at <t:${dayjs().add(1, 'day').utc().hour(channel.hour).minute(0).unix()}:t>.\nUse \`/time\` to change when your updates are sent for everyone in this channel.\nUse \`/unregister\` to cancel your updates.`,
+        ephemeral: interaction.inGuild(),
       })
     } catch (e) {
       if (e.status === 401) {
         interaction.editReply({
           content: `The API token you entered isn't valid. Please make sure you copied it without any extra characters or spaces.`,
-          ephemeral: true,
+          ephemeral: interaction.inGuild(),
         })
       } else {
         interaction.editReply({
           content: `The WaniKani API is currently not responding, please try again later.`,
-          ephemeral: true,
+          ephemeral: interaction.inGuild(),
         })
       }
     }
@@ -184,97 +224,110 @@ client.on('interactionCreate', async interaction => {
     if (user.id !== interaction.user.id && !interaction.memberPermissions.has('MANAGE_MESSAGES')) {
       interaction.reply({
         content: 'You need the _manage messages_ permission to unregister another user.',
-        ephemeral: true,
+        ephemeral: interaction.inGuild(),
       })
     } else {
-      const userData = await db.get(interaction.user.id)
-      if (userData.channel !== interaction.channelId) {
+      const channel = await channels.get(interaction.channelId)
+      if (!channel || !channel.users.includes(interaction.user.id)) {
         return interaction.reply({
           content: 'This user is not registered in this channel. Run this command from the channel that the user registered in.',
-          ephemeral: true,
+          ephemeral: interaction.inGuild(),
         })
       }
-      const users = await db.get('users')
-      await db.set('users', users.filter(u => u !== user.id))
+      await channels.set(interaction.channelId, { ...channel, users: channel.users.filter(u => u !== user.id) })
       interaction.reply({
-        content: `Updates for ${user.displayName} have been cancelled.`,
-        ephemeral: true,
+        content: `Updates for ${user.displayName} have been cancelled in this channel.`,
+        ephemeral: interaction.inGuild(),
       })
     }
   } else if (interaction.commandName === 'streak') {
     const showStreak = interaction.options.getBoolean('enabled', true)
-    const users = await db.get('users')
-    if (!users.includes(interaction.user.id)) {
+    const userData = await users.get(interaction.user.id)
+    if (!userData) {
       interaction.reply({
         content: 'You are not registered for updates. You can do so with `/register [api_token]`.',
-        ephemeral: true,
+        ephemeral: interaction.inGuild(),
       })
     } else {
-      const userData = await db.get(interaction.user.id)
-      await db.set(interaction.user.id, { ...userData, showStreak })
+      await users.set(interaction.user.id, { ...userData, showStreak })
       interaction.reply({
-        content: `Your streak has been ${showStreak ? 'enabled' : 'disabled'}.`,
-        ephemeral: true,
+        content: `Your streak has been ${showStreak ? 'enabled' : 'disabled'} in all channels.`,
+        ephemeral: interaction.inGuild(),
       })
     }
   } else if (interaction.commandName === 'setstreak') {
     const streak = interaction.options.getInteger('value', true)
-    const users = await db.get('users')
-    if (!users.includes(interaction.user.id)) {
+    const userData = await users.get(interaction.user.id)
+    if (!userData) {
       interaction.reply({
         content: 'You are not registered for updates. You can do so with `/register [api_token]`.',
-        ephemeral: true,
+        ephemeral: interaction.inGuild(),
       })
     } else {
-      const userData = await db.get(interaction.user.id)
-      await db.set(interaction.user.id, { ...userData, streak })
+      await users.set(interaction.user.id, { ...userData, streak })
       interaction.reply({
         content: `Your streak has been manually set to ${streak}.`,
-        ephemeral: true,
+        ephemeral: interaction.inGuild(),
       })
     }
   } else if (interaction.commandName === 'time') {
     const hour = interaction.options.getInteger('hour', true)
-    const users = await db.get('users')
-    if (!users.includes(interaction.user.id)) {
+    const channelData = await channels.get(interaction.channelId)
+    if (!channelData) {
       interaction.reply({
-        content: 'You are not registered for updates. You can do so with `/register [api_token]`.',
-        ephemeral: true,
+        content: 'This channel has no registered updates.',
+        ephemeral: interaction.inGuild(),
       })
     } else {
-      const userData = await db.get(interaction.user.id)
-      await db.set(interaction.user.id, { ...userData, hour })
+      await channels.set(interaction.channelId, { ...channelData, hour })
+      interaction.reply(`Daily updates in this channel will now be sent at <t:${dayjs().add(1, 'day').utc().hour(hour).minute(0).unix()}:t>.`)
+    }
+  } else if (interaction.commandName === 'theme') {
+    const theme = interaction.options.getString('set', true)
+    const channelData = await channels.get(interaction.channelId)
+    if (!channelData) {
       interaction.reply({
-        content: `You will now receive your daily updates at <t:${dayjs().add(1, 'day').utc().hour(hour).minute(0).unix()}:t>.`,
-        ephemeral: true,
+        content: 'This channel has no registered updates.',
+        ephemeral: interaction.inGuild(),
       })
+    } else {
+      await channels.set(interaction.channelId, { ...channelData, theme })
+      interaction.reply(`The channel theme has been set to ${theme}.`)
     }
   } else if (interaction.commandName === 'unregisterall') {
     if (!interaction.inGuild()) {
-      interaction.reply({
-        content: 'This command doesn\'t work in a direct message.',
-        ephemeral: true,
+      await interaction.deferReply()
+      const allChannels = await channels.get('channels')
+      let total = 0
+      allChannels.forEach(channelId => {
+        const channelData = await channels.get(channelId)
+        if (channelData.users.includes(interaction.user.id)) {
+          total++
+          await channels.set(channelId, { ...channelData, users: channelData.users.filter(u => u !== interaction.user.id) })
+        }
       })
+      interaction.editReply(`Unregistered you from ${total} channel${total === 1 ? '' : 's'}`)
     } else if (!interaction.memberPermissions.has('MANAGE_MESSAGES')) {
       interaction.reply({
         content: 'You need the _manage messages_ permission to unregister another user.',
-        ephemeral: true,
+        ephemeral: interaction.inGuild(),
       })
     } else {
-      await interaction.deferReply({ ephemeral: true })
-      const channels = await interaction.guild.channels.fetch()
-      const channelIds = channels.map(c => c.id)
-      const users = await db.get('users')
-      let cancelled = []
-      await Promise.allSettled(users.map(async userid => {
-        const userData = await db.get(userid)
-        if (channelIds.includes(userData.channel)) {
-          cancelled = [...cancelled, userid]
-        }
-      }))
-      await db.set('users', users.filter(u => !cancelled.includes(u)))
-      interaction.editReply(`All updates have been disabled in this server. (${cancelled.length} user${cancelled.length === 1 ? '' : 's'})`)
+      // Unregister all channels in the current server
+      const guildChannels = await interaction.guild.channels.fetch()
+      const channelIds = guildChannels.map(c => c.id)
+      const registeredChannels = await channels.get('channels')
+      const updatedChannels = registeredChannels.filter(c => !channelIds.includes(c))
+      await channels.set('channels', updatedChannels)
+      const count = registeredChannels.length - updatedChannels.length
+      interaction.reply(`All updates have been disabled in this server. (${count} user${count === 1 ? '' : 's'})`)
     }
+  } else if (interaction.commandName === 'help') {
+    const command = interaction.options.getString('command')
+    interaction.reply({
+      content: helpText[command ?? 'default'],
+      ephemeral: interaction.inGuild(),
+    })
   }
 })
 
