@@ -189,18 +189,19 @@ client.on('interactionCreate', async interaction => {
     await interaction.deferReply({ ephemeral: interaction.inGuild() })
     try {
       const userData = await users.get(interaction.user.id) ?? { showStreak: true, streak: 0 } // defaults
-      const wkUser = await fetchWK('user', (key ?? userData.key) ?? 'invalid')
-      if (key) {
-        await users.set(interaction.user.id, { ...userData, key })
-      } else if (!userData.key) {
+      if (!key && !userData.key) {
         return interaction.editReply({
           content: 'Your account is not linked with a WaniKani API token yet. Please run `/register [api_token]` with your WaniKani V2 API token.',
           ephemeral: interaction.inGuild(),
         })
       }
+      const wkUser = await fetchWK('user', key ?? userData.key)
+      if (key) {
+        await users.set(interaction.user.id, { ...userData, key })
+      }
       const channel = await channels.get(interaction.channelId) ?? { theme: 'light', hour: 0, users: [] } // defaults
       await channels.set(interaction.channelId, { ...channel, users: [...channel.users.filter(u => u !== interaction.user.id), interaction.user.id] })
-      const channelList = await channels.get('channels')
+      const channelList = await channels.get('channels') ?? []
       await channels.set('channels', [...channelList.filter(c => c !== interaction.channelId), interaction.channelId])
       interaction.editReply({
         content: `✅ Your API token for the WaniKani account [${wkUser.data.username}](<${wkUser.data.profile_url}>) has been saved. Updates will be sent in this channel every day at <t:${dayjs().add(1, 'day').utc().hour(channel.hour).minute(0).unix()}:t>.\nUse \`/time\` to change when your updates are sent for everyone in this channel.\nUse \`/unregister\` to cancel your updates.`,
@@ -297,15 +298,15 @@ client.on('interactionCreate', async interaction => {
   } else if (interaction.commandName === 'unregisterall') {
     if (!interaction.inGuild()) {
       await interaction.deferReply()
-      const allChannels = await channels.get('channels')
+      const allChannels = await channels.get('channels') ?? []
       let total = 0
-      allChannels.forEach(channelId => {
+      await Promise.allSettled(allChannels.forEach(async channelId => {
         const channelData = await channels.get(channelId)
         if (channelData.users.includes(interaction.user.id)) {
           total++
           await channels.set(channelId, { ...channelData, users: channelData.users.filter(u => u !== interaction.user.id) })
         }
-      })
+      }))
       interaction.editReply(`Unregistered you from ${total} channel${total === 1 ? '' : 's'}`)
     } else if (!interaction.memberPermissions.has('MANAGE_MESSAGES')) {
       interaction.reply({
@@ -316,11 +317,11 @@ client.on('interactionCreate', async interaction => {
       // Unregister all channels in the current server
       const guildChannels = await interaction.guild.channels.fetch()
       const channelIds = guildChannels.map(c => c.id)
-      const registeredChannels = await channels.get('channels')
+      const registeredChannels = await channels.get('channels') ?? []
       const updatedChannels = registeredChannels.filter(c => !channelIds.includes(c))
       await channels.set('channels', updatedChannels)
       const count = registeredChannels.length - updatedChannels.length
-      interaction.reply(`All updates have been disabled in this server. (${count} user${count === 1 ? '' : 's'})`)
+      interaction.reply(`All updates have been disabled in this server. (${count} channel${count === 1 ? '' : 's'} disabled)`)
     }
   } else if (interaction.commandName === 'help') {
     const command = interaction.options.getString('command')
