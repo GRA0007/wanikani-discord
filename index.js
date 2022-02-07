@@ -113,7 +113,11 @@ const sendCards = async () => {
   // Find all users that are ready to send
   const currentHour = dayjs().utc().hour()
   const allChannels = await channels.get('channels') ?? []
-  const selectedChannels = allChannels.filter(c => c.hour === currentHour && c.users.length > 0)
+  const fetchedChannels = await Promise.allSettled(allChannels.map(async channelId => {
+    const channelData = await channels.get(channelId)
+    return { ...channelData, id: channelId }
+  }))
+  const selectedChannels = fetchedChannels.filter(p => p.status === 'fulfilled').map(p => p.value).filter(c => c.hour === currentHour && c.users.length > 0)
 
   if (selectedChannels.length === 0) return // No channels registered for this hour
 
@@ -155,7 +159,7 @@ const sendCards = async () => {
         }
         await users.set(userid, { ...userData, streak })
 
-        await sendUserCard(userid, userData.channel, body, {
+        await sendUserCard(userid, channel.id, body, {
           theme: channel.theme,
           level: wkUser.data.level,
           levelTime: dayjs().diff(dayjs(wkLevels.data.at(-1).data.unlocked_at), 'days'),

@@ -46,3 +46,7 @@ If run from a DM, removes all registrations in all servers for the current user.
 3. Create `config.json` and fill out details (use `config.example.json` as a template)
 4. Optionally, run `yarn deploy-commands [guild_id]` to deploy Discord slash commands (omit the guild id to deploy globally)
 5. Run `yarn start` to start the bot
+
+### Specifying an external Chromium executable
+
+On some systems, such as the Raspberry Pi, the Puppeteer library fails to launch it's embedded Chromium executable. If you're getting errors in the console like `Error: Failed to launch the browser process!`, you can try installing Chromium seperately with `sudo apt install chromium-browser`, and adding `"chromium_path": "/usr/bin/chromium-browser"` into your `config.json`.
