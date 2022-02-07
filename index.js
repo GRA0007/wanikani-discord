@@ -34,12 +34,12 @@ const helpText = {
       icon_url: 'https://cdn.discordapp.com/avatars/183911061496266752/dd3ac4c2d47c0d364faa6e1def91dabe.webp',
       url: 'https://bengrant.dev',
     },
-    /*fields: [
+    fields: [
       {
         name: 'Bug reports',
-        value: 'To report bugs, contact Benpai#1138 or visit the [forum post]<>.',
+        value: 'To report bugs, contact Benpai#1138 or visit the [forum post](<https://community.wanikani.com/t/a-wanikani-daily-discord-bot/55682>).',
       },
-    ],*/
+    ],
   },
   register: {
     title: '`/register <api_token>`',
