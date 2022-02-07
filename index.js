@@ -222,7 +222,7 @@ const sendCards = async () => {
 }
 
 client.once('ready', async () => {
-	console.log(new Date().toLocaleString(), `Logged in as ${client.user.tag}`)
+	console.log(new Date().toLocaleString(), `Logged in as ${client.user.tag} to ${client.guilds.cache.size} servers`)
 
   // Run every hour
   new CronJob(`0 0 * * * *`, sendCards, null, true)
