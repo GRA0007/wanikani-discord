@@ -7,7 +7,7 @@ const dayjs = require('dayjs')
 const utc = require('dayjs/plugin/utc')
 dayjs.extend(utc)
 const { URL, URLSearchParams } = require('url')
-const { token } = require('./config.json')
+const { token, chromium_path } = require('./config.json')
 
 // User data
 /*{
@@ -119,7 +119,10 @@ const sendCards = async () => {
 
   // Start the browser
   console.log(new Date().toLocaleString(), `Sending out cards to ${selectedChannels.length} channels`)
-  const browser = await puppeteer.launch({'args': ['--no-sandbox', '--disable-setuid-sandbox']})
+  const browser = await puppeteer.launch({
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    ...chromium_path && { executablePath: chromium_path }, // Allow specifying an external executable to use
+  })
   page = await browser.newPage()
   await page.setViewport({ width: 450, height: 300, deviceScaleFactor: 2 })
   await page.goto(`file:///${__dirname}/card/index.html`)
