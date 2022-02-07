@@ -38,6 +38,10 @@ If run from a server, removes all registrations in that server. Can only be used
 
 If run from a DM, removes all registrations in all servers for the current user.
 
+**`/help <command>`**
+
+Read help information about this bot or a specific command.
+
 ---
 
 ## Development

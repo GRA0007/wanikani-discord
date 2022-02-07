@@ -3,6 +3,7 @@ const { Client, Intents, MessageAttachment } = require('discord.js')
 const Keyv = require('keyv')
 const CronJob = require('cron').CronJob
 const fetch = require('node-fetch')
+const AsyncLock = require('async-lock')
 const dayjs = require('dayjs')
 const utc = require('dayjs/plugin/utc')
 dayjs.extend(utc)
@@ -24,14 +25,54 @@ const { token, chromium_path } = require('./config.json')
 }*/
 
 const helpText = {
-  default: 'Get daily updates in your Discord server with your WaniKani progress! This bot also tracks your streak (days with at least 1 lesson or review).\n\n[Add to your server](<https://discord.com/api/oauth2/authorize?client_id=938595177424105534&permissions=277025705024&scope=bot%20applications.commands>)',
-  register: 'Register a new user to receive daily updates in the current channel. Requires a WaniKani v2 API token. The token can be omitted if you are already registered in another channel.',
-  unregister: 'Unregister yourself (or another user) from updates. If unregistering another user, you must have the _manage messages_ permission.',
-  streak: 'Enable or disable showing a streak on your daily card.',
-  setstreak: 'Manually set your streak to a number. Useful if you have already been using WaniKani for a while, or if you want to reset it to 0.',
-  time: 'Set the hour of each day when all updates in the current channel will be sent. Use GMT time (0 to 23).',
-  theme: 'Set the theme to use in the current channel. Will affect all updates in this channel.',
-  unregisterall: 'If run from a server, removes all registrations in that server. Can only be used if you have the _manage messages_ permission.\n\nIf run from a DM, removes all registrations in all servers for the current user.',
+  default: {
+    title: 'WaniKani Daily',
+    url: 'https://github.com/GRA0007/wanikani-discord',
+    description: 'Get daily updates in your Discord server with your WaniKani progress! This bot also tracks your streak (days with at least 1 lesson or review).\n\n[Add to your server](<https://discord.com/api/oauth2/authorize?client_id=938595177424105534&permissions=277025705024&scope=bot%20applications.commands>)',
+    author: {
+      name: 'Created by Benpai#1138',
+      icon_url: 'https://cdn.discordapp.com/avatars/183911061496266752/dd3ac4c2d47c0d364faa6e1def91dabe.webp',
+      url: 'https://bengrant.dev',
+    },
+    /*fields: [
+      {
+        name: 'Bug reports',
+        value: 'To report bugs, contact Benpai#1138 or visit the [forum post]<>.',
+      },
+    ],*/
+  },
+  register: {
+    title: '`/register <api_token>`',
+    description: 'Register a new user to receive daily updates in the current channel. Requires a WaniKani v2 API token. The token can be omitted if you are already registered in another channel.',
+  },
+  unregister: {
+    title: '`/unregister <@user>`',
+    description: 'Unregister yourself (or another user) from updates. If unregistering another user, you must have the _manage messages_ permission.',
+  },
+  streak: {
+    title: '`/streak [enabled/disabled]`',
+    description: 'Enable or disable showing a streak on your daily card.',
+  },
+  setstreak: {
+    title: '`/setstreak [number]`',
+    description: 'Manually set your streak to a number. Useful if you have already been using WaniKani for a while, or if you want to reset it to 0.',
+  },
+  time: {
+    title: '`/time [hour]`',
+    description: 'Set the hour of each day when all updates in the current channel will be sent. Use GMT time (0 to 23).',
+  },
+  theme: {
+    title: '`/theme [light/dark]`',
+    description: 'Set the theme to use in the current channel. Will affect all updates in this channel.',
+  },
+  unregisterall: {
+    title: '`/unregisterall`',
+    description: 'If run from a server, removes all registrations in that server. Can only be used if you have the _manage messages_ permission.\n\nIf run from a DM, removes all registrations in all servers for the current user.',
+  },
+}
+
+const emojis = {
+  streak: '<:streak:940046252236738620>',
 }
 
 // Database
@@ -39,6 +80,7 @@ const users = new Keyv('sqlite://db.sqlite', { namespace: 'users' })
 const channels = new Keyv('sqlite://db.sqlite', { namespace: 'channels' })
 
 const client = new Client({ intents: [Intents.FLAGS.GUILDS] })
+const lock = new AsyncLock()
 
 // Fetch data from the WaniKani API
 const fetchWK = async (resource, key, params) => {
@@ -87,7 +129,8 @@ const renderCard = async (page, data) => {
 
 // Compose the embed and send the user card
 const sendUserCard = async (userid, channelid, body, data) => {
-  const cardFile = new MessageAttachment(await renderCard(body, data), 'card.png', {
+  const renderedCard = await lock.acquire('browser', async () => await renderCard(body, data))
+  const cardFile = new MessageAttachment(renderedCard, 'wk_daily.png', {
     description: `Level ${data.level}, ${data.streak} day streak`
   })
   const user = await client.users.fetch(userid)
@@ -99,10 +142,7 @@ const sendUserCard = async (userid, channelid, body, data) => {
       icon_url: user.displayAvatarURL(),
     },
     image: {
-      url: 'attachment://card.png',
-    },
-    footer: {
-      text: dayjs().format('D MMMM, YYYY'),
+      url: 'attachment://wk_daily.png',
     },
   }
   await channel.send({ embeds: [embed], files: [cardFile] })
@@ -333,7 +373,10 @@ client.on('interactionCreate', async interaction => {
   } else if (interaction.commandName === 'help') {
     const command = interaction.options.getString('command')
     interaction.reply({
-      content: helpText[command ?? 'default'],
+      embeds: [{
+        color: 0x1C46F5,
+        ...helpText[command ?? 'default'],
+      }],
       ephemeral: interaction.inGuild(),
     })
   }
