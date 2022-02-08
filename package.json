@@ -1,6 +1,6 @@
 {
   "name": "wanikani-discord",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Track Wanikani progress and maintain your streak",
   "main": "index.js",
   "author": "Benji Grant",

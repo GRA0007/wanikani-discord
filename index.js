@@ -83,7 +83,7 @@ const client = new Client({ intents: [Intents.FLAGS.GUILDS] })
 const lock = new AsyncLock()
 
 // Fetch data from the WaniKani API
-const fetchWK = async (resource, key, params) => {
+const fetchWK = async (resource, key, params, attempts = 3) => {
   const url = new URL(`https://api.wanikani.com/v2/${resource}`)
   if (params) {
     url.search = new URLSearchParams(params).toString()
@@ -94,6 +94,12 @@ const fetchWK = async (resource, key, params) => {
       'Authorization': `Bearer ${key}`,
     },
   })
+
+  // Retry if the API returns a server error
+  if (res.status >= 500 && attempts > 0) {
+    await new Promise(resolve => setTimeout(resolve, 500))
+    return await fetchWK(resource, key, params, attempts-1)
+  }
   
   if (res.status !== 200) throw res
   return await res.json()
